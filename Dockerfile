@@ -1,26 +1,15 @@
-# ==========================
-# Etapa 1: Build PHP
-# ==========================
+# ================================
+# Etapa 1: construir dependencias PHP
+# ================================
 FROM php:8.2-fpm-bullseye AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instala dependencias del sistema necesarias
+# Instala dependencias del sistema y extensiones necesarias para Laravel
 RUN apt-get update && apt-get install -y \
-        git \
-        unzip \
-        libpng-dev \
-        libonig-dev \
-        libxml2-dev \
-        zip \
-        libzip-dev \
-        libfreetype-dev \
-        libjpeg-dev \
-        libwebp-dev \
-        libsqlite3-dev \
-        build-essential \
+    git unzip curl libpng-dev libonig-dev libxml2-dev libzip-dev libjpeg62-turbo-dev libfreetype6-dev libwebp-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd zip \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala Composer
@@ -28,43 +17,45 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Copia los archivos del proyecto (menos node_modules y vendor)
+# Copia el código fuente
 COPY . .
 
-# ✅ Si no existe .env, crearlo a partir del ejemplo
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
-
-# Instala dependencias de PHP
+# Instala dependencias PHP (sin las de desarrollo)
 RUN composer install --no-dev --optimize-autoloader
 
-# Genera clave de aplicación
+# Crea archivo .env si no existe y genera key
+RUN cp .env.example .env || true
 RUN php artisan key:generate
 
-# ==========================
-# Etapa 2: Build Node
-# ==========================
+# ================================
+# Etapa 2: construir assets frontend
+# ================================
 FROM node:20-bullseye AS node-build
-
 WORKDIR /var/www/html
 COPY . .
 RUN npm install && npm run build
 
-# ==========================
-# Etapa 3: Runtime (Nginx + PHP-FPM)
-# ==========================
-FROM richarvey/nginx-php-fpm:latest
+# ================================
+# Etapa 3: Imagen final con Nginx + PHP-FPM
+# ================================
+FROM php:8.2-fpm-bullseye
+
+# Instala Nginx y Supervisor
+RUN apt-get update && apt-get install -y nginx supervisor && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
 
-# Copia archivos del build PHP y Node
+# Copia la app y assets construidos
 COPY --from=build /var/www/html /var/www/html
 COPY --from=node-build /var/www/html/public /var/www/html/public
 
-# Ajusta permisos
-RUN chown -R www-data:www-data storage bootstrap/cache
+# Copia configuraciones
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expone el puerto 80
+# Permisos para Laravel
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+
 EXPOSE 80
 
-# ✅ Espera a que el contenedor esté listo antes de migrar
-CMD php artisan migrate --force && nginx -g 'daemon off;'
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
