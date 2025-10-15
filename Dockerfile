@@ -1,52 +1,56 @@
-# -----------------------------
-# 1️⃣ Etapa de compilación (build)
-# -----------------------------
-# Usa una imagen oficial de PHP con Composer y Node para compilar todo
+# 1️⃣ Build stage
 FROM php:8.2-fpm-bullseye AS build
 
-# Instala dependencias del sistema necesarias para PHP y Node
-RUN apt-get update && apt-get install -y \
-    git unzip libpng-dev libonig-dev libxml2-dev zip curl \
-    && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd
+# Evita preguntas interactivas
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Instala Composer manualmente
+# Instala dependencias del sistema necesarias
+RUN apt-get update && \
+    apt-get install -y \
+        git \
+        unzip \
+        libpng-dev \
+        libonig-dev \
+        libxml2-dev \
+        zip \
+        curl \
+        gnupg \
+        sudo \
+        build-essential \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Instala Node.js (para compilar el frontend con Vite)
+# Instala Node.js (para Vite)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
 
-# Establece el directorio de trabajo
+# Establece directorio de trabajo
 WORKDIR /var/www/html
 
-# Copia los archivos del proyecto
+# Copia archivos del proyecto
 COPY . .
 
 # Instala dependencias de Composer
 RUN composer install --no-dev --optimize-autoloader
 
-# Genera la clave de aplicación (en caso de que Render no lo haga)
+# Genera la clave de la app
 RUN php artisan key:generate
 
-# Instala dependencias de Node y compila los assets con Vite
+# Instala dependencias de Node y compila assets
 RUN npm install && npm run build
 
-# -----------------------------
-# 2️⃣ Etapa final (runtime)
-# -----------------------------
-# Usa una imagen ligera de Nginx + PHP-FPM
+# 2️⃣ Runtime stage
 FROM richarvey/nginx-php-fpm:latest
 
-# Copia los archivos compilados desde la etapa anterior
-COPY --from=build /var/www/html /var/www/html
-
-# Define el directorio de trabajo
 WORKDIR /var/www/html
 
-# Da permisos a storage y bootstrap/cache
+COPY --from=build /var/www/html /var/www/html
+
+# Da permisos correctos
 RUN chown -R www-data:www-data storage bootstrap/cache
 
-# Expone el puerto 80 (Render redirige automáticamente)
 EXPOSE 80
 
-# Ejecuta migraciones y luego arranca Nginx
 CMD php artisan migrate --force && nginx -g 'daemon off;'
