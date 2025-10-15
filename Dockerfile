@@ -4,7 +4,7 @@ FROM php:8.2-fpm-bullseye AS build
 # Evita preguntas interactivas
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instala dependencias del sistema necesarias
+# Instala dependencias del sistema necesarias para PHP + extensiones + Node
 RUN apt-get update && \
     apt-get install -y \
         git \
@@ -14,19 +14,22 @@ RUN apt-get update && \
         libxml2-dev \
         zip \
         curl \
-        gnupg \
-        sudo \
-        build-essential \
+        libzip-dev \
+        pkg-config \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libwebp-dev \
+        libxpm-dev \
+        nodejs \
+        npm \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-xpm \
     && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Instala Node.js (para Vite)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
-
-# Establece directorio de trabajo
+# Establece el directorio de trabajo
 WORKDIR /var/www/html
 
 # Copia archivos del proyecto
@@ -35,10 +38,10 @@ COPY . .
 # Instala dependencias de Composer
 RUN composer install --no-dev --optimize-autoloader
 
-# Genera la clave de la app
+# Genera clave de app
 RUN php artisan key:generate
 
-# Instala dependencias de Node y compila assets
+# Instala Node y compila assets
 RUN npm install && npm run build
 
 # 2️⃣ Runtime stage
