@@ -6,8 +6,12 @@ FROM php:8.2-fpm-bullseye AS build
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Instala dependencias del sistema y extensiones necesarias para Laravel
+
 RUN apt-get update && apt-get install -y \
-    git unzip curl libpng-dev libonig-dev libxml2-dev libzip-dev libjpeg62-turbo-dev libfreetype6-dev libwebp-dev \
+    git unzip curl \
+    libpng-dev libonig-dev libxml2-dev libzip-dev \
+    libjpeg62-turbo-dev libfreetype6-dev libwebp-dev \
+    sqlite3 libsqlite3-dev pkg-config \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo pdo_mysql pdo_sqlite gd zip \
     && rm -rf /var/lib/apt/lists/*
