@@ -6,7 +6,6 @@ FROM php:8.2-fpm-bullseye AS build
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Instala dependencias del sistema y extensiones necesarias para Laravel
-
 RUN apt-get update && apt-get install -y \
     git unzip curl \
     libpng-dev libonig-dev libxml2-dev libzip-dev \
@@ -53,13 +52,26 @@ WORKDIR /var/www/html
 COPY --from=build /var/www/html /var/www/html
 COPY --from=node-build /var/www/html/public /var/www/html/public
 
-# Copia configuraciones
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+# ================================
+# Configuración de Nginx y Supervisor
+# ================================
+
+# Copia la configuración personalizada de Nginx
+COPY ./nginx.conf /etc/nginx/sites-enabled/default
+# Borra el archivo de configuración por defecto de nginx.conf si existe
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Copia la configuración de Supervisor
 COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Permisos para Laravel
+# ================================
+# Permisos y exposición de puerto
+# ================================
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 80
 
+# ================================
+# Comando final
+# ================================
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
